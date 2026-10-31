@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+dist/
+build/
+
+# IDE / OS
+.idea/
+.vscode/
+Thumbs.db
+
+# Databases & local data
+*.db
+*.sqlite3
+data/
+Workspace/
+
+# Test screenshots
+before_ui.png
+current_ui.png
+test_grab.png
+
