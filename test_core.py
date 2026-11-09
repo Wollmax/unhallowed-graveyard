@@ -13,7 +13,11 @@ from src.database import (
     STATUS_IN_PROGRESS,
     STATUS_COMPLETED,
     STATUS_NOT_STARTED,
+    STATUS_WAIT_DEFENSE,
+    parse_deadline_datetime,
+    is_deadline_hot,
 )
+from src.ui.theme import get_md3_urgency
 from src.fs_manager import FSManager, sanitize_folder_name
 
 
@@ -142,7 +146,192 @@ def test_core_flow():
         assert files["task"][0].name == "metodichka.pdf"
         print("[OK] Task subfolder file scan (01_Task) verified")
 
-    print("\n[SUCCESS] All Step 1 Core tests passed successfully!")
+        # 7. Проверка Шага 5: Горящие дедлайны и статистика
+        from datetime import datetime, timedelta
+
+        # Проверка parse_deadline_datetime
+        assert parse_deadline_datetime(None) is None
+        assert parse_deadline_datetime("") is None
+        assert parse_deadline_datetime("invalid-date-format") is None
+        iso_t = parse_deadline_datetime("2026-11-20T18:30")
+        assert iso_t is not None and iso_t.year == 2026 and iso_t.hour == 18 and iso_t.minute == 30
+        iso_sec = parse_deadline_datetime("2026-11-20T18:30:45")
+        assert iso_sec is not None and iso_sec.second == 45
+        date_only = parse_deadline_datetime("2026-11-20")
+        assert date_only is not None and date_only.hour == 23 and date_only.minute == 59 and date_only.second == 59
+        ru_date = parse_deadline_datetime("20.11.2026")
+        assert ru_date is not None and ru_date.hour == 23 and ru_date.minute == 59 and ru_date.second == 59
+        ru_dt = parse_deadline_datetime("20.11.2026 14:15")
+        assert ru_dt is not None and ru_dt.hour == 14 and ru_dt.minute == 15
+        print("[OK] Step 5: parse_deadline_datetime edge cases verified")
+
+        now = datetime.now()
+        overdue_str = (now - timedelta(days=2)).strftime("%Y-%m-%d %H:%M")
+        crit_str = (now + timedelta(hours=12)).strftime("%Y-%m-%d %H:%M")
+        crit_iso_str = (now + timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M")
+        warn_str = (now + timedelta(days=2)).strftime("%Y-%m-%d %H:%M")
+        future_str = (now + timedelta(days=10)).strftime("%Y-%m-%d %H:%M")
+
+        # Проверка функции is_deadline_hot
+        assert is_deadline_hot(overdue_str, STATUS_IN_PROGRESS) is True
+        assert is_deadline_hot(crit_str, STATUS_NOT_STARTED) is True
+        assert is_deadline_hot(crit_iso_str, STATUS_NOT_STARTED) is True
+        assert is_deadline_hot(warn_str, STATUS_IN_PROGRESS) is True
+        assert is_deadline_hot(future_str, STATUS_IN_PROGRESS) is False
+        assert is_deadline_hot(overdue_str, STATUS_COMPLETED) is False
+        assert is_deadline_hot(overdue_str, STATUS_WAIT_DEFENSE) is False
+        assert is_deadline_hot(crit_str, STATUS_WAIT_DEFENSE) is False
+        assert is_deadline_hot(None, STATUS_IN_PROGRESS) is False
+        print("[OK] Step 5: is_deadline_hot validation passed")
+
+        # Проверка get_md3_urgency с учетом статуса и форматов дат
+        assert get_md3_urgency(overdue_str, status=STATUS_IN_PROGRESS)[0] == "OVERDUE"
+        assert get_md3_urgency(overdue_str, status=STATUS_COMPLETED)[0] == "COMPLETED"
+        assert get_md3_urgency(overdue_str, status=STATUS_WAIT_DEFENSE)[0] == "WAIT_DEFENSE"
+        assert get_md3_urgency(crit_str, status=STATUS_IN_PROGRESS)[0] == "CRITICAL"
+        assert get_md3_urgency(crit_iso_str, status=STATUS_IN_PROGRESS)[0] == "CRITICAL"
+        assert get_md3_urgency(warn_str, status=STATUS_IN_PROGRESS)[0] == "WARNING"
+        assert get_md3_urgency(future_str, status=STATUS_IN_PROGRESS)[0] == "NORMAL"
+        print("[OK] Step 5: get_md3_urgency tiers and neutral statuses verified")
+
+        # Добавляем задачи с разными сроками
+        t_overdue = db.add_task(
+            subject_id=subj_id,
+            number=2,
+            task_type="Лабораторная",
+            title="Просроченная работа",
+            variant="Вар 1",
+            status=STATUS_IN_PROGRESS,
+            progress_percent=30,
+            deadline_date=overdue_str,
+            notes=None,
+            folder_path="task_2",
+        )
+        t_crit = db.add_task(
+            subject_id=subj_id,
+            number=3,
+            task_type="Практическая",
+            title="Критическая работа <24ч",
+            variant=None,
+            status=STATUS_NOT_STARTED,
+            progress_percent=0,
+            deadline_date=crit_str,
+            notes=None,
+            folder_path="task_3",
+        )
+        t_future = db.add_task(
+            subject_id=subj_id,
+            number=4,
+            task_type="Практическая",
+            title="Далекая работа",
+            variant=None,
+            status=STATUS_IN_PROGRESS,
+            progress_percent=20,
+            deadline_date=future_str,
+            notes=None,
+            folder_path="task_4",
+        )
+        t_defense = db.add_task(
+            subject_id=subj_id,
+            number=5,
+            task_type="Лабораторная",
+            title="Работа на проверке (дедлайн прошел)",
+            variant=None,
+            status=STATUS_WAIT_DEFENSE,
+            progress_percent=85,
+            deadline_date=overdue_str,
+            notes=None,
+            folder_path="task_5",
+        )
+        t_no_deadline = db.add_task(
+            subject_id=subj_id,
+            number=6,
+            task_type="Реферат",
+            title="Реферат без срока",
+            variant=None,
+            status=STATUS_NOT_STARTED,
+            progress_percent=0,
+            deadline_date=None,
+            notes=None,
+            folder_path="task_6",
+        )
+
+        # Проверка get_hot_tasks и сортировки по дедлайну
+        hot_tasks = db.get_hot_tasks()
+        assert len(hot_tasks) == 2  # t_overdue and t_crit (t_defense исключен)
+        assert hot_tasks[0].id == t_overdue  # Просроченная должна идти первой
+        assert hot_tasks[1].id == t_crit
+        print("[OK] Step 5: get_hot_tasks verified and ordered by urgency")
+
+        # Проверка get_deadline_stats
+        stats = db.get_deadline_stats()
+        assert stats["overdue"] == 1
+        assert stats["critical_24h"] == 1
+        assert stats["warning_3d"] == 0
+        assert stats["normal"] == 2  # t_future + t_defense
+        assert stats["no_deadline"] == 1  # t_no_deadline
+        assert stats["hot_count"] == 2
+        assert stats["total_active"] == (
+            stats["overdue"] + stats["critical_24h"] + stats["warning_3d"] + stats["normal"] + stats["no_deadline"]
+        )
+        print(f"[OK] Step 5: get_deadline_stats verified: {stats}")
+
+        # Проверка краевых случаев Step 5:
+        # А) Полночь 00:00 и секунды в русском формате
+        dt_midnight = parse_deadline_datetime("2026-11-20 00:00")
+        assert dt_midnight is not None and dt_midnight.hour == 0 and dt_midnight.minute == 0
+        dt_ru_sec = parse_deadline_datetime("20.11.2026 14:15:30")
+        assert dt_ru_sec is not None and dt_ru_sec.second == 30
+        print("[OK] Step 5: midnight and Russian seconds parsing verified")
+
+        # Б) Хронологическая сортировка разных форматов дат (Русский vs ISO)
+        t_early_iso = db.add_task(
+            subject_id=subj_id,
+            number=7,
+            task_type="Практическая",
+            title="Ранняя задача ISO (5 ноября)",
+            variant=None,
+            status=STATUS_IN_PROGRESS,
+            progress_percent=10,
+            deadline_date="2026-11-05 12:00",
+            notes=None,
+            folder_path="task_7",
+        )
+        t_late_ru = db.add_task(
+            subject_id=subj_id,
+            number=8,
+            task_type="Практическая",
+            title="Поздняя задача RU (20 ноября)",
+            variant=None,
+            status=STATUS_IN_PROGRESS,
+            progress_percent=10,
+            deadline_date="20.11.2026 12:00",
+            notes=None,
+            folder_path="task_8",
+        )
+        all_ordered = db.get_tasks(order_by_deadline=True)
+        task_ids_ordered = [t.id for t in all_ordered]
+        assert task_ids_ordered.index(t_early_iso) < task_ids_ordered.index(t_late_ru)
+        print("[OK] Step 5: Mixed date format chronological ordering verified")
+
+        # В) WAIT_DEFENSE без дедлайна строго учитывается в no_deadline
+        t_defense_no_dl = db.add_task(
+            subject_id=subj_id,
+            number=9,
+            task_type="Лабораторная",
+            title="Защита без срока",
+            variant=None,
+            status=STATUS_WAIT_DEFENSE,
+            progress_percent=90,
+            deadline_date=None,
+            notes=None,
+            folder_path="task_9",
+        )
+        stats2 = db.get_deadline_stats()
+        assert stats2["no_deadline"] == 2
+        print("[OK] Step 5: WAIT_DEFENSE without deadline properly attributed to no_deadline")
+
+    print("\n[SUCCESS] All Step 1 & Step 5 Core tests passed successfully!")
 
 
 if __name__ == "__main__":

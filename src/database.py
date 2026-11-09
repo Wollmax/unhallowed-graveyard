@@ -52,6 +52,61 @@ EXAM_TYPES = [
 ]
 
 
+def parse_deadline_datetime(deadline_str: Optional[str]) -> Optional[datetime]:
+    """
+    Универсальный парсер даты и времени дедлайна с поддержкой ISO8601,
+    пробельных форматов и дат без указания времени (по умолчанию до конца дня 23:59:59).
+    """
+    if not deadline_str:
+        return None
+    s = str(deadline_str).strip()
+    if not s:
+        return None
+
+    # Попытка быстрого парсинга ISO8601 (например, 2026-11-05T18:00 или 2026-11-05)
+    try:
+        dt = datetime.fromisoformat(s)
+        if len(s) == 10:
+            dt = dt.replace(hour=23, minute=59, second=59)
+        return dt
+    except Exception:
+        pass
+
+    # Попытка парсинга стандартных форматов
+    formats = [
+        ("%Y-%m-%d %H:%M", False),
+        ("%Y-%m-%d %H:%M:%S", False),
+        ("%Y-%m-%d", True),
+        ("%d.%m.%Y %H:%M:%S", False),
+        ("%d.%m.%Y %H:%M", False),
+        ("%d.%m.%Y", True),
+        ("%Y/%m/%d %H:%M:%S", False),
+        ("%Y/%m/%d %H:%M", False),
+        ("%Y/%m/%d", True),
+    ]
+    for fmt, is_date_only in formats:
+        try:
+            dt = datetime.strptime(s, fmt)
+            if is_date_only:
+                dt = dt.replace(hour=23, minute=59, second=59)
+            return dt
+        except Exception:
+            continue
+    return None
+
+
+def is_deadline_hot(deadline_date: Optional[str], status: str) -> bool:
+    """Проверяет, является ли работа «горящей» (дедлайн <= 3 дней или просрочен)."""
+    if not deadline_date or status in (STATUS_COMPLETED, STATUS_WAIT_DEFENSE):
+        return False
+    dl = parse_deadline_datetime(deadline_date)
+    if dl is None:
+        return False
+    seconds = (dl - datetime.now()).total_seconds()
+    return seconds <= 3 * 24 * 3600
+
+
+
 @dataclass
 class Subject:
     id: int
@@ -95,7 +150,7 @@ class Database:
     @contextmanager
     def get_connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Создает подключение с включенными foreign keys и закрывает его при выходе."""
-        conn = sqlite3.connect(str(self.db_path))
+        conn = sqlite3.connect(str(self.db_path), timeout=10.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
         try:
@@ -104,9 +159,11 @@ class Database:
             conn.close()
 
     def _init_db(self) -> None:
-        """Инициализация таблиц согласно спецификации."""
+        """Инициализация таблиц и индексов согласно спецификации."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute("PRAGMA journal_mode = WAL;")
+            cursor.execute("PRAGMA synchronous = NORMAL;")
 
             # Таблица настроек
             cursor.execute(
@@ -167,6 +224,12 @@ class Database:
                 );
                 """
             )
+
+            # Высокопроизводительные индексы: O(N) -> O(log N) для выборок, JOIN и CASCADE DELETE
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_subject_id ON tasks(subject_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_subject_status ON tasks(subject_id, status);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_subtasks_task_id ON subtasks(task_id);")
 
             conn.commit()
 
@@ -482,8 +545,10 @@ class Database:
         subject_id: Optional[int] = None,
         status_filter: Optional[str] = None,
         search_query: Optional[str] = None,
+        order_by_deadline: bool = False,
+        only_hot: bool = False,
     ) -> List[Task]:
-        """Возвращает список работ с поддержкой фильтрации по предмету, статусу и поиску."""
+        """Возвращает список работ с поддержкой фильтрации по предмету, статусу, поиску и горящим дедлайнам."""
         query = """
             SELECT t.*, s.name AS subject_name, s.color_hex AS subject_color
             FROM tasks t
@@ -501,20 +566,95 @@ class Database:
                 query += " AND t.status != 'COMPLETED'"
             elif status_filter == "COMPLETED":
                 query += " AND t.status = 'COMPLETED'"
+            elif status_filter == "HOT":
+                query += " AND t.status NOT IN ('COMPLETED', 'WAIT_DEFENSE') AND t.deadline_date IS NOT NULL AND t.deadline_date != ''"
             elif status_filter in STATUS_LABELS:
                 query += " AND t.status = ?"
                 params.append(status_filter)
+
+        if only_hot and status_filter != "HOT":
+            query += " AND t.status NOT IN ('COMPLETED', 'WAIT_DEFENSE') AND t.deadline_date IS NOT NULL AND t.deadline_date != ''"
 
         if search_query:
             query += " AND (t.title LIKE ? OR s.name LIKE ? OR t.variant LIKE ?)"
             wildcard = f"%{search_query.strip()}%"
             params.extend([wildcard, wildcard, wildcard])
 
-        query += " ORDER BY t.number ASC, t.deadline_date ASC;"
+        if order_by_deadline:
+            query += """ ORDER BY 
+                (CASE WHEN t.deadline_date IS NULL OR t.deadline_date = '' THEN 1 ELSE 0 END) ASC,
+                t.deadline_date ASC,
+                t.number ASC;"""
+        else:
+            query += " ORDER BY t.number ASC, t.deadline_date ASC;"
 
         with self.get_connection() as conn:
             rows = conn.execute(query, params).fetchall()
-            return [self._row_to_task(r) for r in rows]
+            tasks = [self._row_to_task(r) for r in rows]
+
+        if status_filter == "HOT" or only_hot:
+            tasks = [t for t in tasks if is_deadline_hot(t.deadline_date, t.status)]
+
+        if order_by_deadline:
+            def _deadline_sort_key(task: Task) -> Tuple[int, datetime, int]:
+                if not task.deadline_date:
+                    return (1, datetime.max, task.number)
+                dt = parse_deadline_datetime(task.deadline_date)
+                if dt is None:
+                    return (1, datetime.max, task.number)
+                return (0, dt, task.number)
+
+            tasks.sort(key=_deadline_sort_key)
+
+        return tasks
+
+    def get_hot_tasks(self, subject_id: Optional[int] = None) -> List[Task]:
+        """Возвращает список горящих работ (дедлайн <= 3 дней или просрочен), отсортированных по срочности."""
+        return self.get_tasks(
+            subject_id=subject_id,
+            status_filter="HOT",
+            order_by_deadline=True,
+        )
+
+    def get_deadline_stats(self) -> Dict[str, int]:
+        """Возвращает агрегированную статистику по дедлайнам всех активных задач."""
+        tasks = self.get_tasks(status_filter="ACTIVE")
+        now = datetime.now()
+        stats = {
+            "total_active": len(tasks),
+            "overdue": 0,
+            "critical_24h": 0,
+            "warning_3d": 0,
+            "normal": 0,
+            "no_deadline": 0,
+            "hot_count": 0,
+        }
+        for t in tasks:
+            if t.status == STATUS_COMPLETED:
+                continue
+            if not t.deadline_date:
+                stats["no_deadline"] += 1
+                continue
+            dl = parse_deadline_datetime(t.deadline_date)
+            if dl is None:
+                stats["no_deadline"] += 1
+                continue
+            if t.status == STATUS_WAIT_DEFENSE:
+                stats["normal"] += 1
+                continue
+            secs = (dl - now).total_seconds()
+            if secs < 0:
+                stats["overdue"] += 1
+                stats["hot_count"] += 1
+            elif secs <= 24 * 3600:
+                stats["critical_24h"] += 1
+                stats["hot_count"] += 1
+            elif secs <= 72 * 3600:
+                stats["warning_3d"] += 1
+                stats["hot_count"] += 1
+            else:
+                stats["normal"] += 1
+        return stats
 
     def get_next_task_number(self, subject_id: int, task_type: str = "Практическая") -> int:
         """Определяет следующий порядковый номер для нового задания."""
@@ -566,6 +706,12 @@ class Database:
 
     @staticmethod
     def _row_to_task(row: sqlite3.Row) -> Task:
+        try:
+            subj_name = row["subject_name"]
+            subj_color = row["subject_color"]
+        except (IndexError, KeyError):
+            subj_name = None
+            subj_color = None
         return Task(
             id=row["id"],
             subject_id=row["subject_id"],
@@ -580,6 +726,6 @@ class Database:
             score=row["score"],
             notes=row["notes"],
             folder_path=row["folder_path"],
-            subject_name=row["subject_name"] if "subject_name" in row.keys() else None,
-            subject_color=row["subject_color"] if "subject_color" in row.keys() else None,
+            subject_name=subj_name,
+            subject_color=subj_color,
         )

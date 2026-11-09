@@ -6,13 +6,16 @@ from __future__ import annotations
 
 import ctypes
 from datetime import datetime
+import functools
 from pathlib import Path
 import sys
 from typing import Any, Dict, Optional, Tuple
 
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtGui import QColor, QFontDatabase
 from PySide6.QtWidgets import QApplication, QWidget
+
+from ..database import STATUS_COMPLETED, STATUS_WAIT_DEFENSE, parse_deadline_datetime
 
 
 # ==============================================================================
@@ -171,11 +174,11 @@ PIXEL_THEMES_LIGHT: Dict[str, Dict[str, Any]] = {
     "pixel_blue": {
         "name": "Pixel Sapphire (Светлая)",
         "swatch": "#0B57D0",
-        "panel_bg": "rgba(240, 245, 255, 145)",
-        "center_bg": "rgba(248, 251, 255, 115)",
-        "card_bg": "rgba(255, 255, 255, 175)",
-        "card_hover": "rgba(255, 255, 255, 225)",
-        "card_selected": "rgba(225, 236, 255, 205)",
+        "panel_bg": "rgba(240, 245, 255, 95)",
+        "center_bg": "rgba(248, 251, 255, 70)",
+        "card_bg": "rgba(255, 255, 255, 110)",
+        "card_hover": "rgba(255, 255, 255, 155)",
+        "card_selected": "rgba(225, 236, 255, 140)",
         "card_border": "transparent",
         "card_border_hover": "transparent",
         "panel_border": "transparent",
@@ -200,11 +203,11 @@ PIXEL_THEMES_LIGHT: Dict[str, Dict[str, Any]] = {
     "emerald": {
         "name": "Pixel Emerald (Светлая)",
         "swatch": "#0F6D38",
-        "panel_bg": "rgba(238, 248, 242, 145)",
-        "center_bg": "rgba(246, 253, 248, 115)",
-        "card_bg": "rgba(255, 255, 255, 175)",
-        "card_hover": "rgba(255, 255, 255, 225)",
-        "card_selected": "rgba(215, 244, 224, 205)",
+        "panel_bg": "rgba(238, 248, 242, 95)",
+        "center_bg": "rgba(246, 253, 248, 70)",
+        "card_bg": "rgba(255, 255, 255, 110)",
+        "card_hover": "rgba(255, 255, 255, 155)",
+        "card_selected": "rgba(215, 244, 224, 140)",
         "card_border": "transparent",
         "card_border_hover": "transparent",
         "panel_border": "transparent",
@@ -229,11 +232,11 @@ PIXEL_THEMES_LIGHT: Dict[str, Dict[str, Any]] = {
     "lavender": {
         "name": "Pixel Lavender (Светлая)",
         "swatch": "#6750A4",
-        "panel_bg": "rgba(246, 240, 254, 145)",
-        "center_bg": "rgba(252, 248, 255, 115)",
-        "card_bg": "rgba(255, 255, 255, 175)",
-        "card_hover": "rgba(255, 255, 255, 225)",
-        "card_selected": "rgba(238, 226, 255, 205)",
+        "panel_bg": "rgba(246, 240, 254, 95)",
+        "center_bg": "rgba(252, 248, 255, 70)",
+        "card_bg": "rgba(255, 255, 255, 110)",
+        "card_hover": "rgba(255, 255, 255, 155)",
+        "card_selected": "rgba(238, 226, 255, 140)",
         "card_border": "transparent",
         "card_border_hover": "transparent",
         "panel_border": "transparent",
@@ -258,11 +261,11 @@ PIXEL_THEMES_LIGHT: Dict[str, Dict[str, Any]] = {
     "rose": {
         "name": "Pixel Rose (Светлая)",
         "swatch": "#9C3A4D",
-        "panel_bg": "rgba(254, 242, 244, 145)",
-        "center_bg": "rgba(255, 249, 250, 115)",
-        "card_bg": "rgba(255, 255, 255, 175)",
-        "card_hover": "rgba(255, 255, 255, 225)",
-        "card_selected": "rgba(255, 225, 230, 205)",
+        "panel_bg": "rgba(254, 242, 244, 95)",
+        "center_bg": "rgba(255, 249, 250, 70)",
+        "card_bg": "rgba(255, 255, 255, 110)",
+        "card_hover": "rgba(255, 255, 255, 155)",
+        "card_selected": "rgba(255, 225, 230, 140)",
         "card_border": "transparent",
         "card_border_hover": "transparent",
         "panel_border": "transparent",
@@ -287,11 +290,11 @@ PIXEL_THEMES_LIGHT: Dict[str, Dict[str, Any]] = {
     "amber": {
         "name": "Pixel Gold (Светлая)",
         "swatch": "#7D5700",
-        "panel_bg": "rgba(254, 245, 232, 145)",
-        "center_bg": "rgba(255, 251, 245, 115)",
-        "card_bg": "rgba(255, 255, 255, 175)",
-        "card_hover": "rgba(255, 255, 255, 225)",
-        "card_selected": "rgba(255, 230, 185, 205)",
+        "panel_bg": "rgba(254, 245, 232, 95)",
+        "center_bg": "rgba(255, 251, 245, 70)",
+        "card_bg": "rgba(255, 255, 255, 110)",
+        "card_hover": "rgba(255, 255, 255, 155)",
+        "card_selected": "rgba(255, 230, 185, 140)",
         "card_border": "transparent",
         "card_border_hover": "transparent",
         "panel_border": "transparent",
@@ -326,10 +329,161 @@ DEFAULT_THEME = "pixel_blue"
 DEFAULT_MODE = "dark"
 
 
-def get_theme(theme_key: str = DEFAULT_THEME, mode: str = "dark") -> Dict[str, Any]:
-    """Возвращает палитру тонов для заданной темы Monet и режима (dark/light)."""
+def generate_custom_theme(primary_hex: str, mode: str = "dark", opacity: float = 1.0) -> Dict[str, Any]:
+    """Генерирует полную палитру темы Material 3 Expressive на основе произвольного HEX цвета пользователя."""
+    is_dark = (mode == "dark")
+    c = QColor(primary_hex)
+    if not c.isValid():
+        c = QColor("#8AB4F8")
+
+    r, g, b = c.red(), c.green(), c.blue()
+    h = max(0.0, min(1.0, c.hsvHueF()))
+    s = max(0.0, min(1.0, c.hsvSaturationF()))
+    v = max(0.0, min(1.0, c.valueF()))
+
+    op = max(0.20, min(1.0, opacity))
+    op_fg_dark = 0.65 + 0.35 * op
+    op_fg_light = 0.75 + 0.25 * op
+
+    if is_dark:
+        # Для темной темы primary — пастельный, выразительный
+        prim_col = QColor.fromHsvF(h, min(0.70, s * 0.75), max(0.88, v))
+        prim_hover = QColor.fromHsvF(h, min(0.60, s * 0.65), min(1.0, v + 0.12))
+        on_primary = "#121316" if prim_col.lightnessF() > 0.6 else "#FFFFFF"
+
+        # Приглушенные фоны панелей с легким оттенком выбранного цвета
+        bg_col = QColor.fromHsvF(h, min(0.25, s * 0.30), 0.14)
+        center_col = QColor.fromHsvF(h, min(0.20, s * 0.25), 0.10)
+        card_col = QColor.fromHsvF(h, min(0.25, s * 0.30), 0.18)
+
+        return {
+            "name": f"Кастомная ({primary_hex.upper()})",
+            "swatch": primary_hex,
+            "panel_bg": f"rgba({bg_col.red()}, {bg_col.green()}, {bg_col.blue()}, {int(140 * op)})",
+            "center_bg": f"rgba({center_col.red()}, {center_col.green()}, {center_col.blue()}, {int(115 * op)})",
+            "card_bg": f"rgba({card_col.red()}, {card_col.green()}, {card_col.blue()}, {int(145 * op_fg_dark)})",
+            "card_hover": f"rgba({min(255, card_col.red()+18)}, {min(255, card_col.green()+18)}, {min(255, card_col.blue()+18)}, {int(185 * op_fg_dark)})",
+            "card_selected": f"rgba({min(255, card_col.red()+36)}, {min(255, card_col.green()+36)}, {min(255, card_col.blue()+36)}, {int(200 * op_fg_dark)})",
+            "card_border": "transparent",
+            "card_border_hover": "transparent",
+            "panel_border": "transparent",
+            "center_border": "transparent",
+            "ambient_top": f"#{int(bg_col.red()*1.2):02x}{int(bg_col.green()*1.2):02x}{int(bg_col.blue()*1.2):02x}",
+            "ambient_bottom": f"#{int(center_col.red()*0.8):02x}{int(center_col.green()*0.8):02x}{int(center_col.blue()*0.8):02x}",
+            "primary": prim_col.name(),
+            "primary_hover": prim_hover.name(),
+            "on_primary": on_primary,
+            "secondary_container": f"rgba({r}, {g}, {b}, {int(35 * op)})",
+            "on_secondary_container": prim_col.name(),
+            "on_secondary": prim_col.name(),
+            "text_primary": "#E2E2E9",
+            "text_secondary": "#C4C7D0",
+            "text_muted": "#9DA1AA",
+            "dialog_bg": f"rgba({bg_col.red()+4}, {bg_col.green()+4}, {bg_col.blue()+4}, 220)",
+            "dialog_card": "rgba(255, 255, 255, 0.06)",
+            "scrollbar_handle": "rgba(255, 255, 255, 0.18)",
+            "scrollbar_hover": "rgba(255, 255, 255, 0.35)",
+            "is_dark": True,
+        }
+    else:
+        # Для светлой темы primary — глубокий, контрастный
+        prim_col = QColor.fromHsvF(h, max(0.55, min(0.95, s)), min(0.65, max(0.40, v)))
+        prim_hover = QColor.fromHsvF(h, min(1.0, s * 1.05), min(0.78, v + 0.10))
+        on_primary = "#FFFFFF"
+
+        bg_col = QColor.fromHsvF(h, min(0.10, s * 0.12), 0.98)
+        center_col = QColor.fromHsvF(h, min(0.06, s * 0.08), 0.99)
+        card_col = QColor(255, 255, 255)
+
+        return {
+            "name": f"Кастомная ({primary_hex.upper()})",
+            "swatch": primary_hex,
+            "panel_bg": f"rgba({bg_col.red()}, {bg_col.green()}, {bg_col.blue()}, {int(95 * op)})",
+            "center_bg": f"rgba({center_col.red()}, {center_col.green()}, {center_col.blue()}, {int(70 * op)})",
+            "card_bg": f"rgba({card_col.red()}, {card_col.green()}, {card_col.blue()}, {int(110 * op_fg_light)})",
+            "card_hover": f"rgba(255, 255, 255, {int(155 * op_fg_light)})",
+            "card_selected": f"rgba({min(255, r+180)}, {min(255, g+180)}, {min(255, b+180)}, {int(140 * op_fg_light)})",
+            "card_border": "transparent",
+            "card_border_hover": "transparent",
+            "panel_border": "transparent",
+            "center_border": "transparent",
+            "ambient_top": f"#{int(bg_col.red()*0.96):02x}{int(bg_col.green()*0.96):02x}{int(bg_col.blue()*0.96):02x}",
+            "ambient_bottom": f"#{int(bg_col.red()*0.92):02x}{int(bg_col.green()*0.92):02x}{int(bg_col.blue()*0.92):02x}",
+            "primary": prim_col.name(),
+            "primary_hover": prim_hover.name(),
+            "on_primary": on_primary,
+            "secondary_container": f"rgba({r}, {g}, {b}, {int(24 * op)})",
+            "on_secondary_container": "#1A1C1E",
+            "on_secondary": "#1A1C1E",
+            "text_primary": "#1A1C1E",
+            "text_secondary": "#404943",
+            "text_muted": "#707973",
+            "dialog_bg": f"rgba({bg_col.red()}, {bg_col.green()}, {bg_col.blue()}, 225)",
+            "dialog_card": "rgba(255, 255, 255, 0.70)",
+            "scrollbar_handle": "rgba(0, 0, 0, 0.16)",
+            "scrollbar_hover": "rgba(0, 0, 0, 0.32)",
+            "is_dark": False,
+        }
+
+
+# Кэш вычисленных палитр тем оформления
+_THEME_PALETTE_CACHE: Dict[Tuple[str, str, Optional[str], float], Dict[str, Any]] = {}
+
+
+def get_theme(theme_key: str = DEFAULT_THEME, mode: str = "dark", custom_color: Optional[str] = None, opacity: float = 1.0) -> Dict[str, Any]:
+    """Возвращает палитру тонов для заданной темы Monet и режима (dark/light) с поддержкой кастомного цвета и прозрачности."""
+    cache_key = (theme_key, mode, custom_color, round(opacity, 2))
+    cached = _THEME_PALETTE_CACHE.get(cache_key)
+    if cached is not None:
+        return dict(cached)
+
+    if theme_key == "custom":
+        hex_c = custom_color or "#8AB4F8"
+        res = generate_custom_theme(hex_c, mode=mode, opacity=opacity)
+        _THEME_PALETTE_CACHE[cache_key] = res
+        return dict(res)
+    if theme_key.startswith("custom:"):
+        hex_c = theme_key.split(":", 1)[1]
+        res = generate_custom_theme(hex_c, mode=mode, opacity=opacity)
+        _THEME_PALETTE_CACHE[cache_key] = res
+        return dict(res)
+
     table = PIXEL_THEMES_LIGHT if mode == "light" else PIXEL_THEMES_DARK
-    return table.get(theme_key, table.get(DEFAULT_THEME, PIXEL_THEMES_DARK[DEFAULT_THEME]))
+    base = dict(table.get(theme_key, table.get(DEFAULT_THEME, PIXEL_THEMES_DARK[DEFAULT_THEME])))
+
+    if opacity != 1.0:
+        op = max(0.20, min(1.0, opacity))
+        is_light = (mode == "light")
+        # Поверхности (фон) масштабируются сильнее, карточки переднего плана сохраняют плотность
+        op_surface = op
+        op_fg = (0.75 + 0.25 * op) if is_light else (0.65 + 0.35 * op)
+
+        for key in ("panel_bg", "center_bg"):
+            val = base.get(key, "")
+            if val.startswith("rgba(") and val.endswith(")"):
+                parts = [p.strip() for p in val[5:-1].split(",")]
+                if len(parts) == 4:
+                    try:
+                        old_a = float(parts[3])
+                        new_a = int(old_a * op_surface) if old_a > 1 else round(old_a * op_surface, 2)
+                        base[key] = f"rgba({parts[0]}, {parts[1]}, {parts[2]}, {new_a})"
+                    except Exception:
+                        pass
+
+        for key in ("card_bg", "card_hover", "card_selected"):
+            val = base.get(key, "")
+            if val.startswith("rgba(") and val.endswith(")"):
+                parts = [p.strip() for p in val[5:-1].split(",")]
+                if len(parts) == 4:
+                    try:
+                        old_a = float(parts[3])
+                        new_a = int(old_a * op_fg) if old_a > 1 else round(old_a * op_fg, 2)
+                        base[key] = f"rgba({parts[0]}, {parts[1]}, {parts[2]}, {new_a})"
+                    except Exception:
+                        pass
+
+    _THEME_PALETTE_CACHE[cache_key] = base
+    return dict(base)
 
 
 # ==============================================================================
@@ -357,12 +511,17 @@ SUBJECT_PRESET_COLORS_MD3 = [
 ]
 
 
-def get_md3_urgency(deadline_str: Optional[str], is_completed: bool = False, is_dark: bool = True) -> Tuple[str, str, str]:
+def get_md3_urgency(
+    deadline_str: Optional[str],
+    is_completed: bool = False,
+    is_dark: bool = True,
+    status: Optional[str] = None,
+) -> Tuple[str, str, str]:
     """
     Возвращает (код_срочности, цвет_текста, полупрозрачный_фон_бейджа).
     Zero Borders: используется контраст тона без линий обводок.
     """
-    if is_completed:
+    if is_completed or status == STATUS_COMPLETED:
         fg = "#80D999" if is_dark else "#0F6D38"
         bg = "rgba(128, 217, 153, 35)" if is_dark else "rgba(15, 109, 56, 26)"
         return "COMPLETED", fg, bg
@@ -370,30 +529,29 @@ def get_md3_urgency(deadline_str: Optional[str], is_completed: bool = False, is_
     neutral_fg = "#C4C7D0" if is_dark else "#44474E"
     neutral_bg = "rgba(142, 144, 153, 24)" if is_dark else "rgba(90, 94, 105, 20)"
 
+    if status == STATUS_WAIT_DEFENSE:
+        return "WAIT_DEFENSE", neutral_fg, neutral_bg
+
     if not deadline_str:
         return "NO_DEADLINE", neutral_fg, neutral_bg
 
-    try:
-        if len(deadline_str) == 10:
-            dl = datetime.strptime(deadline_str, "%Y-%m-%d")
-        else:
-            dl = datetime.strptime(deadline_str[:16], "%Y-%m-%d %H:%M")
+    dl = parse_deadline_datetime(deadline_str)
+    if dl is None:
+        return "NORMAL", neutral_fg, neutral_bg
 
-        now = datetime.now()
-        delta = dl - now
-        seconds = delta.total_seconds()
+    now = datetime.now()
+    delta = dl - now
+    seconds = delta.total_seconds()
 
-        if seconds < 0 or seconds <= 24 * 3600:
-            crit_fg = "#FFB4AB" if is_dark else "#BA1A1A"
-            crit_bg = "rgba(255, 180, 171, 35)" if is_dark else "rgba(186, 26, 26, 26)"
-            return ("OVERDUE" if seconds < 0 else "CRITICAL"), crit_fg, crit_bg
-        elif seconds <= 3 * 24 * 3600:
-            warn_fg = "#FFDF99" if is_dark else "#8C5800"
-            warn_bg = "rgba(255, 223, 153, 35)" if is_dark else "rgba(178, 108, 0, 26)"
-            return "WARNING", warn_fg, warn_bg
-        else:
-            return "NORMAL", neutral_fg, neutral_bg
-    except Exception:
+    if seconds < 0 or seconds <= 24 * 3600:
+        crit_fg = "#FFB4AB" if is_dark else "#BA1A1A"
+        crit_bg = "rgba(255, 180, 171, 35)" if is_dark else "rgba(186, 26, 26, 26)"
+        return ("OVERDUE" if seconds < 0 else "CRITICAL"), crit_fg, crit_bg
+    elif seconds <= 3 * 24 * 3600:
+        warn_fg = "#FFDF99" if is_dark else "#8C5800"
+        warn_bg = "rgba(255, 223, 153, 35)" if is_dark else "rgba(178, 108, 0, 26)"
+        return "WARNING", warn_fg, warn_bg
+    else:
         return "NORMAL", neutral_fg, neutral_bg
 
 
@@ -401,10 +559,18 @@ def get_md3_urgency(deadline_str: Optional[str], is_completed: bool = False, is_
 # 3. Подгрузка шрифтов Roboto
 # ==============================================================================
 
+_FONTS_LOADED_COUNT: Optional[int] = None
+
+
 def load_custom_fonts() -> int:
-    """Загружает все шрифты .ttf из src/resources/fonts/ в QFontDatabase."""
+    """Загружает все шрифты .ttf из src/resources/fonts/ в QFontDatabase (с кэшированием вызова)."""
+    global _FONTS_LOADED_COUNT
+    if _FONTS_LOADED_COUNT is not None:
+        return _FONTS_LOADED_COUNT
+
     fonts_dir = Path(__file__).resolve().parent.parent / "resources" / "fonts"
     if not fonts_dir.exists():
+        _FONTS_LOADED_COUNT = 0
         return 0
 
     count = 0
@@ -415,6 +581,7 @@ def load_custom_fonts() -> int:
                 count += 1
         except Exception:
             pass
+    _FONTS_LOADED_COUNT = count
     return count
 
 
@@ -511,8 +678,10 @@ class ThemeManager(QObject):
 
     def __init__(self, initial_key: str = DEFAULT_THEME, initial_mode: str = DEFAULT_MODE, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
-        self._current_key = initial_key if initial_key in PIXEL_THEMES_DARK else DEFAULT_THEME
+        self._current_key = initial_key if (initial_key in PIXEL_THEMES_DARK or initial_key == "custom") else DEFAULT_THEME
         self._current_mode = initial_mode if initial_mode in ("dark", "light") else DEFAULT_MODE
+        self._custom_color: Optional[str] = None
+        self._opacity: float = 1.0
 
     @property
     def current_key(self) -> str:
@@ -523,21 +692,31 @@ class ThemeManager(QObject):
         return self._current_mode
 
     @property
-    def palette(self) -> Dict[str, Any]:
-        return get_theme(self._current_key, mode=self._current_mode)
+    def custom_color(self) -> Optional[str]:
+        return self._custom_color
 
-    def set_theme(self, theme_key: str, mode: Optional[str] = None) -> None:
+    @property
+    def opacity(self) -> float:
+        return self._opacity
+
+    @property
+    def palette(self) -> Dict[str, Any]:
+        return get_theme(self._current_key, mode=self._current_mode, custom_color=self._custom_color, opacity=self._opacity)
+
+    def set_theme(self, theme_key: str, mode: Optional[str] = None, custom_color: Optional[str] = None, opacity: Optional[float] = None) -> None:
         new_mode = mode or self._current_mode
-        if theme_key == self._current_key and new_mode == self._current_mode:
-            return
-        if theme_key in PIXEL_THEMES_DARK:
+        if custom_color is not None:
+            self._custom_color = custom_color
+        if opacity is not None:
+            self._opacity = opacity
+        if theme_key in PIXEL_THEMES_DARK or theme_key == "custom" or theme_key.startswith("custom:"):
             self._current_key = theme_key
         if new_mode in ("dark", "light"):
             self._current_mode = new_mode
 
         app = QApplication.instance()
         if app:
-            app.setStyleSheet(get_stylesheet(self._current_key, mode=self._current_mode))
+            app.setStyleSheet(get_stylesheet(self._current_key, mode=self._current_mode, custom_color=self._custom_color, opacity=self._opacity))
         self.theme_changed.emit(self._current_key)
 
 
@@ -545,9 +724,10 @@ class ThemeManager(QObject):
 # 6. Генерация Zero-Border QSS таблицы стилей
 # ==============================================================================
 
-def get_stylesheet(theme_key: str = DEFAULT_THEME, mode: str = "dark") -> str:
+@functools.lru_cache(maxsize=32)
+def get_stylesheet(theme_key: str = DEFAULT_THEME, mode: str = "dark", custom_color: Optional[str] = None, opacity: float = 1.0) -> str:
     """Генерирует QSS-стили для Material 3 Expressive с эстетикой матового стекла (Frosted Glass)."""
-    t = get_theme(theme_key, mode=mode)
+    t = get_theme(theme_key, mode=mode, custom_color=custom_color, opacity=opacity)
     panel_bg = t["panel_bg"]
     center_bg = t["center_bg"]
     card_bg = t["card_bg"]
@@ -846,8 +1026,8 @@ QSlider::add-page:horizontal {{
     border-radius: 3px;
 }}
 QSlider::handle:horizontal {{
-    background-color: {slider_handle_bg};
-    border: 3px solid {primary};
+    background-color: {primary};
+    border: 2.5px solid {card_bg};
     width: 14px;
     height: 14px;
     margin-top: -4px;
@@ -856,7 +1036,7 @@ QSlider::handle:horizontal {{
 }}
 QSlider::handle:horizontal:hover {{
     background-color: {primary};
-    border: 2px solid {slider_handle_bg};
+    border: 2px solid {primary};
     width: 16px;
     height: 16px;
     margin-top: -5px;

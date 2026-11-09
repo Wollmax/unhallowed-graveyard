@@ -119,6 +119,9 @@ def test_ui_components():
             assert window.theme["is_dark"] is True
             assert db.get_setting("theme_name") == t_key
             assert db.get_setting("theme_mode") == "dark"
+            if window.inspector_widget is not None:
+                assert window.theme["primary"] in window.inspector_widget.header_lbl.styleSheet()
+                assert window.theme["primary"] in window.inspector_widget.sec_task.add_btn.styleSheet()
 
             # Светлая тема
             window.set_active_theme(t_key, mode="light")
@@ -127,6 +130,9 @@ def test_ui_components():
             assert window.theme["is_dark"] is False
             assert db.get_setting("theme_name") == t_key
             assert db.get_setting("theme_mode") == "light"
+            if window.inspector_widget is not None:
+                assert window.theme["primary"] in window.inspector_widget.header_lbl.styleSheet()
+                assert window.theme["primary"] in window.inspector_widget.sec_task.add_btn.styleSheet()
         print("[OK] Monet theme switching verified across all Pixel Dark & Light palettes")
 
         # 8. Проверка семантических функций контрастности
@@ -229,11 +235,188 @@ def test_ui_components():
         assert "border: none" in window.sidebar_widget.styleSheet()
         assert "border: none" in window.right_widget.styleSheet()
         assert "border: 1px solid #FFFFFF" not in window.add_task_btn.styleSheet()
-        print("[OK] Zero-Border validation: no harsh white borders detected")
+        # ======================================================================
+        # Шаг 5: Дашборд горящих дедлайнов, индикация сроков, трей и уведомления
+        # ======================================================================
+        from datetime import datetime, timedelta
+        from PySide6.QtGui import QCloseEvent
 
-        window.close()
+        now = datetime.now()
+        overdue_date = (now - timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
+        crit_date = (now + timedelta(hours=10)).strftime("%Y-%m-%d %H:%M")
+        future_date = (now + timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
 
-    print("\n[SUCCESS] All Step 2 & Step 3 UI tests passed successfully!")
+        # 1. Добавляем задачи с разными дедлайнами для проверки индикации и дашборда
+        task_overdue_id = db.add_task(
+            subject_id=subj_id,
+            number=2,
+            task_type="Лабораторная",
+            title="Просроченная лабораторная работа",
+            variant="Вар. 1",
+            status="IN_PROGRESS",
+            progress_percent=30,
+            deadline_date=overdue_date,
+            notes="Сдать срочно",
+            folder_path="task_overdue",
+        )
+        task_crit_id = db.add_task(
+            subject_id=subj_id,
+            number=3,
+            task_type="Практическая",
+            title="Горящая практическая (<24ч)",
+            variant="Вар. 2",
+            status="NOT_STARTED",
+            progress_percent=0,
+            deadline_date=crit_date,
+            notes="Выполнить сегодня",
+            folder_path="task_crit",
+        )
+        task_future_id = db.add_task(
+            subject_id=subj_id,
+            number=4,
+            task_type="Курсовая",
+            title="Плановая курсовая работа",
+            variant=None,
+            status="IN_PROGRESS",
+            progress_percent=20,
+            deadline_date=future_date,
+            notes="Срок через неделю",
+            folder_path="task_future",
+        )
+
+        # 2. Проверка кнопки дашборда и перехода в режим дашборда
+        assert hasattr(window, "dashboard_btn")
+        assert window.dashboard_btn is not None
+        window._select_dashboard()
+        assert window.is_dashboard_mode is True
+        assert window.current_subject_id is None
+        assert "Горящие дедлайны" in window.center_title.text()
+        assert "Просрочено:" in window.center_stats.text()
+        print("[OK] Step 5: Dashboard mode selected, title and deadline stats rendered")
+
+        # 3. Проверка сортировки задач в дашборде (просроченные и горящие первыми)
+        dashboard_task_ids = [card.task.id for card in window.task_cards]
+        assert dashboard_task_ids[0] == task_overdue_id
+        assert dashboard_task_ids[1] == task_crit_id
+        print("[OK] Step 5: Dashboard tasks ordered by deadline urgency (overdue & critical first)")
+
+        # 4. Проверка цветовой индикации и текстовых бейджей дедлайна
+        card_overdue = next(c for c in window.task_cards if c.task.id == task_overdue_id)
+        card_crit = next(c for c in window.task_cards if c.task.id == task_crit_id)
+        card_future = next(c for c in window.task_cards if c.task.id == task_future_id)
+
+        assert "Просрочено" in card_overdue.deadline_badge.text()
+        assert "🔥" in card_crit.deadline_badge.text()
+        assert "До" in card_future.deadline_badge.text()
+        print("[OK] Step 5: Deadline urgency indicators (overdue, burning, normal) verified on cards")
+
+        # 5. Проверка фильтра «Только горящие» в комбобоксе
+        hot_idx = -1
+        for i in range(window.status_filter_combo.count()):
+            if window.status_filter_combo.itemData(i) == "HOT":
+                hot_idx = i
+                break
+        assert hot_idx >= 0
+        window.status_filter_combo.setCurrentIndex(hot_idx)
+        window.load_tasks()
+        filtered_task_ids = [c.task.id for c in window.task_cards]
+        assert task_overdue_id in filtered_task_ids
+        assert task_crit_id in filtered_task_ids
+        assert task_future_id not in filtered_task_ids
+        print("[OK] Step 5: 'HOT' status filter correctly filters out non-urgent tasks")
+
+        # Возвращаем фильтр на "Все статусы"
+        window.status_filter_combo.setCurrentIndex(0)
+        window.load_tasks()
+
+        # 6. Проверка системного трея и меню
+        if window.tray_icon is not None:
+            assert window.tray_icon.contextMenu() is not None
+            actions = [a.text() for a in window.tray_icon.contextMenu().actions() if a.text()]
+            assert "Открыть UniVault" in actions
+            assert "Горящие дедлайны" in actions
+            assert "Проверить дедлайны" in actions
+            assert "Выход" in actions
+            print("[OK] Step 5: System tray context menu initialized with all required actions")
+
+        # 7. Проверка фонового таймера проверки дедлайнов (2 часа)
+        assert hasattr(window, "notification_timer")
+        assert window.notification_timer.interval() == 2 * 3600 * 1000
+        print("[OK] Step 5: Notification timer configured with 2-hour interval")
+
+        # 8. Проверка проверки дедлайнов и отправки уведомлений
+        window.check_deadlines_and_notify(force=True)
+        assert window._last_notified_task_id == task_overdue_id
+        print("[OK] Step 5: check_deadlines_and_notify identified most urgent task")
+
+        # 9. Проверка клика по уведомлению: окно разворачивается и открывает инспектор работы
+        window._on_tray_message_clicked()
+        assert window.selected_task is not None
+        assert window.selected_task.id == task_overdue_id
+        assert window.right_widget.isVisible()
+        print("[OK] Step 5: Notification click handler opened task inspector for burning task")
+
+        # 10. Проверка интерактивного DatePicker в TaskInspectorWidget
+        insp = window.inspector_widget
+        assert hasattr(insp, "deadline_picker")
+        assert hasattr(insp, "dl_urgency_badge")
+        assert insp.deadline_picker.calendarPopup() is True
+
+        # Интерактивное изменение дедлайна через DatePicker инспектора
+        new_qdt = QDateTime.currentDateTime().addDays(6)
+        insp.deadline_picker.setDateTime(new_qdt)
+        updated_db_task = db.get_task(task_overdue_id)
+        assert updated_db_task.deadline_date == new_qdt.toPython().strftime("%Y-%m-%d %H:%M")
+        assert insp.dl_urgency_badge.text() == "В графике"
+        print("[OK] Step 5: Interactive DatePicker updated task deadline in DB and UI badge")
+
+        # Проверка форматирования дедлайна в полночь 00:00 и чистой даты
+        test_card = window.task_cards[0]
+        midnight_display = test_card._format_deadline_display("2026-11-20 00:00")
+        assert "00:00" in midnight_display
+        date_only_display = test_card._format_deadline_display("2026-11-20")
+        assert "23:59" not in date_only_display
+        print("[OK] Step 5: Midnight (00:00) and date-only formatting display verified")
+
+        # 11. Проверка настроек трея и уведомлений в SettingsPageWidget
+        sp = window.settings_page
+        assert hasattr(sp, "tray_checkbox")
+        assert hasattr(sp, "notify_checkbox")
+        assert hasattr(sp, "check_deadlines_btn")
+
+        # Переключение чекбоксов
+        sp.tray_checkbox.setChecked(False)
+        assert db.get_setting("minimize_to_tray") == "0"
+        sp.tray_checkbox.setChecked(True)
+        assert db.get_setting("minimize_to_tray") == "1"
+
+        sp.notify_checkbox.setChecked(False)
+        assert db.get_setting("notifications_enabled") == "0"
+        sp.notify_checkbox.setChecked(True)
+        assert db.get_setting("notifications_enabled") == "1"
+        print("[OK] Step 5: SettingsPageWidget tray and notification settings persisted to SQLite")
+
+        # 12. Проверка периодического таймера уведомлений (повторный запуск через 2 часа)
+        # Симулируем прошедшие 2.5 часа с момента предыдущего уведомления
+        if task_crit_id in window._last_notified_timestamps:
+            window._last_notified_timestamps[task_crit_id] = datetime.now() - timedelta(hours=2.5)
+        window.check_deadlines_and_notify(force=False)
+        assert window._last_notified_task_id == task_crit_id
+        print("[OK] Step 5: 2-hour interval periodic notification successfully triggered")
+
+        # 13. Проверка сворачивания в трей при closeEvent
+        ev_close = QCloseEvent()
+        window.closeEvent(ev_close)
+        if window.tray_icon is not None:
+            assert ev_close.isAccepted() is False
+            print("[OK] Step 5: Close event intercepted and minimized to tray")
+
+        # Проверка полного выхода
+        window._force_quit()
+        assert window._is_quitting is True
+        print("[OK] Step 5: Force quit cleanly accepted")
+
+    print("\n[SUCCESS] All Step 2, Step 3 & Step 5 UI tests passed successfully!")
 
 
 if __name__ == "__main__":

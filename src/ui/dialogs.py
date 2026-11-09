@@ -36,7 +36,7 @@ from ..database import (
     TASK_TYPES,
 )
 from .cards import ThemeSwatchButton
-from .icons import get_material_icon
+from .icons import get_material_icon, get_material_pixmap
 from .theme import (
     DEFAULT_THEME,
     MD3_TEXT_PRIMARY,
@@ -291,7 +291,7 @@ class SettingsDialog(QDialog):
             """
         )
 
-        self.header_icon.setPixmap(get_material_icon("settings", color=self.theme["primary"], size=24).pixmap(24, 24))
+        self.header_icon.setPixmap(get_material_pixmap("settings", color=self.theme["primary"], size=24))
         self.header_title.setStyleSheet(
             f"font-size: 22px; font-weight: 700; color: {self.theme['text_primary']}; border: none; background: transparent;"
         )
@@ -306,7 +306,7 @@ class SettingsDialog(QDialog):
 
         if hasattr(self, "student_icon"):
             self.student_icon.setStyleSheet("background: transparent; border: none;")
-            self.student_icon.setPixmap(get_material_icon("badge", color=self.theme["primary"], size=18).pixmap(18, 18))
+            self.student_icon.setPixmap(get_material_pixmap("badge", color=self.theme["primary"], size=18))
         if hasattr(self, "student_sec_title"):
             self.student_sec_title.setStyleSheet(
                 f"font-size: 11px; font-weight: 700; color: {self.theme['text_secondary']}; letter-spacing: 1px; border: none; background: transparent;"
@@ -330,20 +330,20 @@ class SettingsDialog(QDialog):
             self.student_group_input.setStyleSheet(st_inp_style)
 
         self.mode_icon.setStyleSheet("background: transparent; border: none;")
-        self.mode_icon.setPixmap(get_material_icon("tune", color=self.theme["primary"], size=18).pixmap(18, 18))
+        self.mode_icon.setPixmap(get_material_pixmap("tune", color=self.theme["primary"], size=18))
         self.mode_sec_title.setStyleSheet(
             f"font-size: 11px; font-weight: 700; color: {self.theme['text_secondary']}; letter-spacing: 1px; border: none; background: transparent;"
         )
 
         self.palette_icon.setStyleSheet("background: transparent; border: none;")
-        self.palette_icon.setPixmap(get_material_icon("palette", color=self.theme["primary"], size=18).pixmap(18, 18))
+        self.palette_icon.setPixmap(get_material_pixmap("palette", color=self.theme["primary"], size=18))
         self.theme_sec_title.setStyleSheet(
             f"font-size: 11px; font-weight: 700; color: {self.theme['text_secondary']}; letter-spacing: 1px; border: none; background: transparent;"
         )
         self.theme_desc.setStyleSheet(f"font-size: 12px; color: {self.theme['text_secondary']}; border: none; background: transparent;")
 
         self.folder_icon.setStyleSheet("background: transparent; border: none;")
-        self.folder_icon.setPixmap(get_material_icon("folder", color=self.theme["primary"], size=18).pixmap(18, 18))
+        self.folder_icon.setPixmap(get_material_pixmap("folder", color=self.theme["primary"], size=18))
         self.ws_sec_title.setStyleSheet(
             f"font-size: 11px; font-weight: 700; color: {self.theme['text_secondary']}; letter-spacing: 1px; border: none; background: transparent;"
         )
@@ -507,13 +507,36 @@ class AddSubjectDialog(QDialog):
         header_row = QHBoxLayout()
         header_row.setSpacing(10)
         h_icon = QLabel()
-        h_icon.setPixmap(get_material_icon("school", color=self.theme["primary"], size=22).pixmap(22, 22))
+        h_icon.setPixmap(get_material_pixmap("school", color=self.theme["primary"], size=22))
         header_row.addWidget(h_icon)
 
         header = QLabel("Новый учебный предмет")
         header.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {self.theme['text_primary']}; border: none; background: transparent;")
         header_row.addWidget(header)
         header_row.addStretch()
+
+        close_btn = QPushButton()
+        close_btn.setIcon(get_material_icon("close", color=self.theme.get("text_secondary", "#C4C7D0"), size=18))
+        close_btn.setFixedSize(32, 32)
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setToolTip("Закрыть (Esc)")
+        close_btn.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: transparent;
+                border: none;
+                border-radius: 16px;
+                min-height: 32px;
+                max-height: 32px;
+                padding: 0px;
+            }}
+            QPushButton:hover {{
+                background-color: {'rgba(255, 255, 255, 0.14)' if self.theme_mode == 'dark' else 'rgba(0, 0, 0, 0.08)'};
+            }}
+            """
+        )
+        close_btn.clicked.connect(self.reject)
+        header_row.addWidget(close_btn)
         layout.addLayout(header_row)
 
         form = QFormLayout()
@@ -665,13 +688,36 @@ class AddTaskDialog(QDialog):
         header_row = QHBoxLayout()
         header_row.setSpacing(10)
         t_icon = QLabel()
-        t_icon.setPixmap(get_material_icon("assignment", color=self.theme["primary"], size=22).pixmap(22, 22))
+        t_icon.setPixmap(get_material_pixmap("assignment", color=self.theme["primary"], size=22))
         header_row.addWidget(t_icon)
 
         header = QLabel("Новая практическая работа")
         header.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {self.theme['text_primary']}; border: none; background: transparent;")
         header_row.addWidget(header)
         header_row.addStretch()
+
+        close_btn = QPushButton()
+        close_btn.setIcon(get_material_icon("close", color=self.theme.get("text_secondary", "#C4C7D0"), size=18))
+        close_btn.setFixedSize(32, 32)
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setToolTip("Закрыть (Esc)")
+        close_btn.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: transparent;
+                border: none;
+                border-radius: 16px;
+                min-height: 32px;
+                max-height: 32px;
+                padding: 0px;
+            }}
+            QPushButton:hover {{
+                background-color: {'rgba(255, 255, 255, 0.14)' if self.theme_mode == 'dark' else 'rgba(0, 0, 0, 0.08)'};
+            }}
+            """
+        )
+        close_btn.clicked.connect(self.reject)
+        header_row.addWidget(close_btn)
         layout.addLayout(header_row)
 
         form = QFormLayout()

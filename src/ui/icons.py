@@ -88,14 +88,51 @@ MATERIAL_SVG_PATHS: Dict[str, str] = {
     "check": "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z",
     "edit": "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z",
     "schedule": "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z",
+    "arrow_back": "M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z",
     "arrow_forward": "M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z",
     "play_arrow": "M8 5v14l11-7z",
     "content_copy": "M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z",
     "folder_zip": "M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10h2v2h-2v-2zm0-2h-2v2h2v-2zm0-2h2v2h-2v-2zm0-2h-2v2h2V10zm0-2h2v2h-2V8zm0-2h-2v2h2V6z",
     "event": "M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5z",
     "terminal": "M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.4-1.4 3.6-3.6-3.6-3.6L7.5 7l5 5-5 5z",
+    "drive_file_move": "M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 12v-3h-4v-2h4V10l4 4-4 4z",
+    "badge": "M20 7h-5V4c0-1.1-.9-2-2-2h-2c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zm-9-3h2v5h-2V4zm11 16H2V9h18v11z",
     "more_vert": "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
+    # Уведомления и дедлайны (Шаг 5)
+    "whatshot": (
+        "M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36"
+        "C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67z"
+        "M11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58"
+        ".39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"
+    ),
+    "local_fire_department": (
+        "M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36"
+        "C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67z"
+        "M11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58"
+        ".39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"
+    ),
+    "notifications": (
+        "M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5"
+        "s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"
+    ),
+    "notifications_active": (
+        "M7.58 4.08L6.15 2.65C3.75 4.48 2.17 7.3 2.03 10.5h2c.15-2.65 1.51-4.97 3.55-6.42zm12.39 6.42h2"
+        "c-.15-3.2-1.73-6.02-4.12-7.85l-1.42 1.43c2.02 1.45 3.39 3.77 3.54 6.42zM18 11c0-3.07-1.63-5.64-4.5-6.32"
+        "V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2v-5zm-6 11"
+        "c.14 0 .27-.01.4-.04.65-.14 1.18-.58 1.44-1.18.1-.24.15-.5.16-.78h-4c.01.27.06.52.16.76.25.59.78 1.04"
+        " 1.43 1.19.14.03.27.05.41.05z"
+    ),
+    "alarm": (
+        "M22 5.72l-4.6-3.86-1.29 1.53 4.6 3.86L22 5.72zM7.88 3.39L6.6 1.86 2 5.71l1.29 1.53 4.59-3.85z"
+        "M12.5 8H11v6l4.75 2.85.75-1.23-4-2.37V8zM12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9c4.97 0 9-4.03 9-9"
+        "s-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"
+    ),
 }
+
+# Кэш растровых изображений и иконок для предотвращения повторного XML-парсинга и перерисовки
+_PIXMAP_CACHE: Dict[Tuple[str, str, int], QPixmap] = {}
+_ICON_CACHE: Dict[Tuple[str, str, int], QIcon] = {}
+_MAX_CACHE_SIZE = 1024
 
 
 def get_material_svg(name: str, color: str = "#FFFFFF", size: int = 24) -> str:
@@ -109,7 +146,15 @@ def get_material_svg(name: str, color: str = "#FFFFFF", size: int = 24) -> str:
 
 
 def get_material_pixmap(name: str, color: str = "#FFFFFF", size: int = 24) -> QPixmap:
-    """Генерирует QPixmap векторной иконки Material Design заданного цвета и размера."""
+    """Генерирует или возвращает из кэша QPixmap векторной иконки Material Design."""
+    cache_key = (name, color, size)
+    pix = _PIXMAP_CACHE.get(cache_key)
+    if pix is not None:
+        return pix
+
+    if len(_PIXMAP_CACHE) >= _MAX_CACHE_SIZE:
+        _PIXMAP_CACHE.clear()
+
     svg_str = get_material_svg(name, color=color, size=size)
     renderer = QSvgRenderer(QByteArray(svg_str.encode("utf-8")))
 
@@ -121,10 +166,21 @@ def get_material_pixmap(name: str, color: str = "#FFFFFF", size: int = 24) -> QP
     renderer.render(painter)
     painter.end()
 
+    _PIXMAP_CACHE[cache_key] = pixmap
     return pixmap
 
 
 def get_material_icon(name: str, color: str = "#FFFFFF", size: int = 24) -> QIcon:
-    """Создает QIcon из официальной векторной иконки Google Material Design."""
-    return QIcon(get_material_pixmap(name, color=color, size=size))
+    """Создает или возвращает из кэша QIcon из официальной векторной иконки Google Material Design."""
+    cache_key = (name, color, size)
+    icon = _ICON_CACHE.get(cache_key)
+    if icon is not None:
+        return icon
+
+    if len(_ICON_CACHE) >= _MAX_CACHE_SIZE:
+        _ICON_CACHE.clear()
+
+    icon = QIcon(get_material_pixmap(name, color=color, size=size))
+    _ICON_CACHE[cache_key] = icon
+    return icon
 

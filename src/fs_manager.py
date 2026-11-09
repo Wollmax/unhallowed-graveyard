@@ -17,14 +17,16 @@ from typing import Dict, List, Optional
 
 # Запрещенные символы в именах файлов и папок Windows: \ / : * ? " < > |
 WINDOWS_INVALID_CHARS_REGEX = re.compile(r'[\\/:*?"<>|]')
+RE_SPACES = re.compile(r"\s+")
+RE_UNDERSCORES = re.compile(r"_+")
 
 
 def sanitize_folder_name(name: str, max_length: int = 60) -> str:
     """Очищает строку от символов, запрещенных в файловой системе Windows."""
     cleaned = WINDOWS_INVALID_CHARS_REGEX.sub("_", name.strip())
-    # Убираем повторяющиеся подчеркивания и пробелы
-    cleaned = re.sub(r"\s+", " ", cleaned)
-    cleaned = re.sub(r"_+", "_", cleaned)
+    # Убираем повторяющиеся подчеркивания и пробелы с помощью прекомпилированных regex
+    cleaned = RE_SPACES.sub(" ", cleaned)
+    cleaned = RE_UNDERSCORES.sub("_", cleaned)
     # Убираем точки и пробелы на концах (Windows не разрешает)
     cleaned = cleaned.strip(". ")
     if not cleaned:
@@ -123,19 +125,18 @@ class FSManager:
     def list_task_files(
         self, subject_folder: str, task_folder: str
     ) -> Dict[str, List[Path]]:
-        """Возвращает списки файлов по секциям: task, workspace, submission."""
+        """Возвращает списки файлов по секциям: task, workspace, submission.
+        Использует os.scandir для снижения числа файловых дескрипторов и stat-вызовов на Windows.
+        """
         subfolders = self.get_task_subfolders(subject_folder, task_folder)
         result: Dict[str, List[Path]] = {}
         for key, folder in subfolders.items():
-            if folder.exists() and folder.is_dir():
-                try:
-                    result[key] = sorted(
-                        [p for p in folder.iterdir() if p.is_file()],
-                        key=lambda p: p.name.lower(),
-                    )
-                except Exception:
-                    result[key] = []
-            else:
+            try:
+                with os.scandir(folder) as it:
+                    files = [Path(entry.path) for entry in it if entry.is_file()]
+                    files.sort(key=lambda p: p.name.lower())
+                    result[key] = files
+            except (FileNotFoundError, NotADirectoryError, PermissionError, OSError):
                 result[key] = []
         return result
 
